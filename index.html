@@ -64,70 +64,78 @@
     <div id="msg"></div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
-   const firebaseConfig = {
-  apiKey: "AIzaSyDeWKD3G8FE5cV36xn9nSIUXVRwbR-0L-w",
-  authDomain: "hostelmanagementsystem-151e6.firebaseapp.com",
-  projectId: "hostelmanagementsystem-151e6",
-  storageBucket: "hostelmanagementsystem-151e6.firebasestorage.app",
-  messagingSenderId: "630182817513",
-  appId: "1:630182817513:web:42a96594193646bd31ca78"
-};
+  const firebaseConfig = {
+    apiKey: "AIzaSyDeWKD3G8FE5cV36xn9nSIUXVRwbR-0L-w",
+    authDomain: "hostelmanagementsystem-151e6.firebaseapp.com",
+    projectId: "hostelmanagementsystem-151e6",
+    storageBucket: "hostelmanagementsystem-151e6.firebasestorage.app",
+    messagingSenderId: "630182817513",
+    appId: "1:630182817513:web:42a96594193646bd31ca78"
+  };
 
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+  window.login = async function () {
+    const msgEl = document.getElementById("msg");
+    msgEl.style.color = "red";
+    msgEl.textContent = "";
 
-    window.login = async function () {
-      const msgEl = document.getElementById("msg");
-      msgEl.style.color = "red";
-      msgEl.textContent = "";
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
 
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
+    if (!email || !password) {
+      msgEl.textContent = "Enter email and password.";
+      return;
+    }
 
-      if (!email || !password) {
-        msgEl.textContent = "Enter email and password.";
+    const btn = document.getElementById("loginBtn");
+    btn.disabled = true;
+    btn.textContent = "Logging in...";
+
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const user = cred.user;
+
+      // ✅ Check email verification
+      if (!user.emailVerified) {
+        msgEl.style.color = "red";
+        msgEl.textContent = "❌ Your email is not verified. Please check your inbox.";
+        await signOut(auth);
         return;
       }
 
-      const btn = document.getElementById("loginBtn");
-      btn.disabled = true;
-      btn.textContent = "Logging in...";
-
-      try {
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        const user = cred.user;
-
-        // Fetch role from Firestore
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (!userDoc.exists()) {
-          msgEl.textContent = "User profile not found in database.";
-          return;
-        }
-
-        const data = userDoc.data();
-        if (data.role === "student") {
-          window.location.href = "student.html";
-        } else if (data.role === "warden") {
-          window.location.href = "warden.html";
-        } else {
-          msgEl.textContent = "Unknown user role.";
-        }
-
-      } catch (err) {
-        msgEl.textContent = err.message || "Login failed";
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Login";
+      // ✅ Fetch user role from Firestore
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      if (!userDoc.exists()) {
+        msgEl.textContent = "User profile not found in database.";
+        await signOut(auth);
+        return;
       }
-    };
-  </script>
+
+      const data = userDoc.data();
+      if (data.role === "student") {
+        window.location.href = "student.html";
+      } else if (data.role === "warden") {
+        window.location.href = "warden.html";
+      } else {
+        msgEl.textContent = "Unknown user role.";
+      }
+
+    } catch (err) {
+      msgEl.textContent = err.message || "Login failed";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Login";
+    }
+  };
+</script>
 
 </body>
 </html>
