@@ -206,24 +206,24 @@ window.saveProfile = async function () {
     alert("Profile updated ✅");
     loadProfile();
 };
+// =================== ATTENDANCE ===================
 
-/* =================== ATTENDANCE =================== */
 window.loadAttendance = async function () {
     closeMenu();
-    mainContent.innerHTML = `<h2>Attendance</h2><p>Checking...</p>`;
+   mainContent.innerHTML = `<h2>Attendance</h2><p>Checking...</p>`;
 
-    let today = new Date().toISOString().slice(0, 10);
 
-    // ✅ find today's attendance for this user
+    let today = new Date().toISOString().slice(0, 10); // Format: YYYY-MM-DD
+
+    // Query attendance for this user for today only (efficient)
     const q = query(
         collection(db, "attendance"),
         where("uid", "==", UID),
         where("date", "==", today)
     );
-
     const snap = await getDocs(q);
 
-    // ✅ if attendance already submitted, show status
+    // Check if attendance was already submitted today
     if (!snap.empty) {
         const data = snap.docs[0].data();
         mainContent.innerHTML = `
@@ -238,27 +238,24 @@ window.loadAttendance = async function () {
         return;
     }
 
-    // ✅ Attendance form if not submitted
+    // Show attendance form (pre-fill with profile if available)
+    const profile = STUDENT_DOC && STUDENT_DOC.data ? STUDENT_DOC.data : {};
     mainContent.innerHTML = `
         <h2>Attendance</h2>
         <label>Name</label>
-        <input class="inp" id="att_name" placeholder="Your name" value="${STUDENT_DOC?.data()?.name || ''}">
-        
+        <input class="inp" id="att_name" placeholder="Your name" value="${profile.name || ''}">
         <label>Register Number</label>
-        <input class="inp" id="att_reg" placeholder="Register number" value="${STUDENT_DOC?.data()?.regno || ''}">
-        
+        <input class="inp" id="att_reg" placeholder="Register number" value="${profile.regno || ''}">
         <label>Status</label>
         <select id="att_status" class="inp">
             <option value="">-- select --</option>
-            <option>Present</option>
-            <option>Absent</option>
+            <option value="Present">Present</option>
+            <option value="Absent">Absent</option>
         </select>
-
         <button class="btn" onclick="markAttendance()">Submit</button>
         <p id="attMsg" class="small-muted"></p>
     `;
 };
-
 
 window.markAttendance = async function () {
     const name = document.getElementById('att_name').value.trim();
@@ -271,21 +268,35 @@ window.markAttendance = async function () {
         return;
     }
 
-    // ✅ Save attendance
+    // Double check: prevent multiple attendance submissions for today
+    const q = query(
+        collection(db, "attendance"),
+        where("uid", "==", UID),
+        where("date", "==", today)
+    );
+    const snap = await getDocs(q);
+
+    if (!snap.empty) {
+        document.getElementById("attMsg").textContent = "Attendance already submitted for today!";
+        setTimeout(loadAttendance, 800);
+        return;
+    }
+
+    // Save attendance document
     await addDoc(collection(db, "attendance"), {
         uid: UID,
         name,
         regno: reg,
         status,
-        date: today,
+        date: today, // Format: YYYY-MM-DD
         time: new Date().toLocaleTimeString()
     });
 
     document.getElementById("attMsg").textContent = "✅ Attendance Submitted";
 
-    // ✅ Reload page to show status
-    setTimeout(() => loadAttendance(), 600);
+    setTimeout(loadAttendance, 800);
 };
+
 
 
 /* ===================== OUTPASS ===================== */
@@ -542,3 +553,4 @@ document.addEventListener('click', (e) => {
 
 </body>
 </html>
+
