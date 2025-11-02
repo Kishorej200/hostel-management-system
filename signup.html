@@ -61,12 +61,14 @@
     <input id="regno" type="text" placeholder="Register Number" />
     <input id="department" type="text" placeholder="Department" />
     <input id="room" type="text" placeholder="Room Number" />
-
+    <input type="password" id="wardenCode" placeholder="Enter Warden Secret Code" style="display:none;">
     <input id="contact" type="text" placeholder="Contact Number" />
     <input id="email" type="email" placeholder="Email" />
     <input id="password" type="password" placeholder="Password (min 6 chars)" />
 
     <button id="signupBtn" onclick="signup()">Sign Up</button>
+
+    <button id="resendBtn" style="display:none;" onclick="resendVerification()">Resend Verification Email</button>
 
     <p style="margin-top:10px;">
       Already have an account?
@@ -78,7 +80,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
-  import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+  import { getAuth, createUserWithEmailAndPassword, sendEmailVerification } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
   import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -104,7 +106,6 @@
   toggleReg();
 
   window.signup = async function () {
-
     const msgEl = document.getElementById("msg");
     msgEl.style.color = "red";
     msgEl.textContent = "";
@@ -146,12 +147,17 @@
         room: role === "student" ? room : "",
         contact,
         email,
+        verified: false,
         createdAt: new Date().toISOString()
       });
 
+      // ✅ Send Verification Email
+      await sendEmailVerification(user);
+
       msgEl.style.color = "green";
-      msgEl.textContent = "Account created successfully! Redirecting...";
-      setTimeout(() => { window.location.href = "index.html"; }, 1500);
+      msgEl.innerHTML = "✅ Account created! Verification email sent.<br>Check your inbox.";
+
+      document.getElementById("resendBtn").style.display = "block";
 
     } catch (err) {
       msgEl.style.color = "red";
@@ -159,6 +165,18 @@
     } finally {
       btn.disabled = false;
       btn.textContent = "Sign Up";
+    }
+  };
+
+  // ✅ RESEND VERIFICATION EMAIL
+  window.resendVerification = async function () {
+    if (!auth.currentUser) return;
+
+    try {
+      await sendEmailVerification(auth.currentUser);
+      alert("✅ Verification email resent! Check your inbox.");
+    } catch (err) {
+      alert("❌ Error: " + err.message);
     }
   };
 </script>
