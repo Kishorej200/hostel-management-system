@@ -61,13 +61,17 @@
     <input id="regno" type="text" placeholder="Register Number" />
     <input id="department" type="text" placeholder="Department" />
     <input id="room" type="text" placeholder="Room Number" />
+
+    <!-- ✅ Secret Code for Warden -->
     <input type="password" id="wardenCode" placeholder="Enter Warden Secret Code" style="display:none;">
+
     <input id="contact" type="text" placeholder="Contact Number" />
     <input id="email" type="email" placeholder="Email" />
     <input id="password" type="password" placeholder="Password (min 6 chars)" />
 
     <button id="signupBtn" onclick="signup()">Sign Up</button>
 
+    <!-- ✅ Resend Button -->
     <button id="resendBtn" style="display:none;" onclick="resendVerification()">Resend Verification Email</button>
 
     <p style="margin-top:10px;">
@@ -80,9 +84,14 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
-  import { getAuth, createUserWithEmailAndPassword, sendEmailVerification } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
-  import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+  import { 
+    getAuth, createUserWithEmailAndPassword, sendEmailVerification 
+  } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+  import { 
+    getFirestore, doc, setDoc 
+  } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
+  // ✅ Your Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyDeWKD3G8FE5cV36xn9nSIUXVRwbR-0L-w",
     authDomain: "hostelmanagementsystem-151e6.firebaseapp.com",
@@ -96,15 +105,19 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
 
+  // ✅ Show correct fields for Warden / Student
   window.toggleReg = function () {
     const role = document.getElementById("role").value;
-    document.getElementById("regno").style.display = (role === "warden") ? "none" : "block";
-    document.getElementById("department").style.display = (role === "warden") ? "none" : "block";
-    document.getElementById("room").style.display = (role === "warden") ? "none" : "block";
-  };
+    const isWarden = role === "warden";
 
+    document.getElementById("regno").style.display = isWarden ? "none" : "block";
+    document.getElementById("department").style.display = isWarden ? "none" : "block";
+    document.getElementById("room").style.display = isWarden ? "none" : "block";
+    document.getElementById("wardenCode").style.display = isWarden ? "block" : "none";
+  };
   toggleReg();
 
+  // ✅ MAIN SIGNUP FUNCTION
   window.signup = async function () {
     const msgEl = document.getElementById("msg");
     msgEl.style.color = "red";
@@ -118,17 +131,21 @@
     const contact = document.getElementById("contact").value.trim();
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
+    const wardenCode = document.getElementById("wardenCode").value.trim();
 
     if (!name || !email || !contact || !password) {
       msgEl.textContent = "Please fill all required fields.";
       return;
     }
 
-    if (role === "student") {
-      if (!regno || !department || !room) {
-        msgEl.textContent = "Students must enter Register No, Department & Room Number";
-        return;
-      }
+    if (role === "student" && (!regno || !department || !room)) {
+      msgEl.textContent = "Students must enter Register No, Department & Room Number";
+      return;
+    }
+
+    if (role === "warden" && wardenCode !== "WARDEN123") {
+      msgEl.textContent = "Invalid Warden Secret Code!";
+      return;
     }
 
     const btn = document.getElementById("signupBtn");
@@ -139,6 +156,7 @@
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       const user = cred.user;
 
+      // ✅ Store user in Firestore
       await setDoc(doc(db, "users", user.uid), {
         name,
         role,
@@ -151,7 +169,7 @@
         createdAt: new Date().toISOString()
       });
 
-      // ✅ Send Verification Email
+      // ✅ Send Email Verification
       await sendEmailVerification(user);
 
       msgEl.style.color = "green";
@@ -168,13 +186,15 @@
     }
   };
 
-  // ✅ RESEND VERIFICATION EMAIL
+  // ✅ RESEND VERIFICATION
   window.resendVerification = async function () {
-    if (!auth.currentUser) return;
-
     try {
-      await sendEmailVerification(auth.currentUser);
-      alert("✅ Verification email resent! Check your inbox.");
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        alert("✅ Verification email resent!");
+      } else {
+        alert("⚠ Please login first to resend email.");
+      }
     } catch (err) {
       alert("❌ Error: " + err.message);
     }
