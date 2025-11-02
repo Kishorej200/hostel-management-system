@@ -312,102 +312,34 @@ window.saveOutpass = async function () {
     document.getElementById('opMsg').textContent = "Outpass submitted ✅";
 };
 
-/* ================= STUDENT - Leave Form ================= */
-window.loadLeave = async function () {
+/* ===================== LEAVE ===================== */
+window.loadLeave = function () {
     closeMenu();
-    mainContent.innerHTML = `<h2>Leave Form</h2><p>Checking...</p>`;
-
-    const user = auth.currentUser;
-
-    // check latest leave request for this student
-    const q = query(
-        collection(db, "leave_requests"),
-        where("email", "==", user.email),
-        orderBy("createdAt", "desc"),
-        limit(1)
-    );
-    const snap = await getDocs(q);
-
-    if (!snap.empty) {
-        const docData = snap.docs[0].data();
-        const status = docData.status;
-
-        // ✅ If Pending → block new form
-        if (status === "Pending") {
-            mainContent.innerHTML = `
-                <h2>Leave Status</h2>
-                <p><b>Reason:</b> ${escapeHtml(docData.reason)}</p>
-                <p><b>From:</b> ${escapeHtml(docData.from)}</p>
-                <p><b>To:</b> ${escapeHtml(docData.to)}</p>
-                <p style="color:orange; font-weight:bold;">⏳ Status: Pending</p>
-            `;
-            return;
-        }
-
-        // ✅ Show last result if Approved or Rejected
-        const color = status === "Approved" ? "green" : "red";
-        mainContent.innerHTML = `
-            <h2>Last Leave Result</h2>
-            <p><b>Reason:</b> ${escapeHtml(docData.reason)}</p>
-            <p><b>From:</b> ${escapeHtml(docData.from)}</p>
-            <p><b>To:</b> ${escapeHtml(docData.to)}</p>
-            <p style="color:${color}; font-weight:bold;">Status: ${status}</p>
-            <br>
-            <button class="btn" onclick="showLeaveForm()">Apply New Leave</button>
-        `;
-        return;
-    }
-
-    // ✅ If no history → show form
-    showLeaveForm();
-};
-
-function showLeaveForm() {
     mainContent.innerHTML = `
         <h2>Leave Form</h2>
-        <label>Name</label>
-        <input class="inp" id="lf_name" placeholder="Your Name">
-        
-        <label>Register Number</label>
-        <input class="inp" id="lf_reg" placeholder="Register Number">
-
-        <label>From</label>
-        <input class="inp" id="lf_from" type="date">
-
-        <label>To</label>
-        <input class="inp" id="lf_to" type="date">
-
-        <label>Reason</label>
-        <input class="inp" id="lf_reason" placeholder="Reason">
-
-        <button class="btn" onclick="submitLeave()">Submit</button>
+        <label>Name</label><input class="inp" id="lf_name" placeholder="Name">
+        <label>Register Number</label><input class="inp" id="lf_reg" placeholder="Register number">
+        <label>From</label><input class="inp" id="lf_from" type="date">
+        <label>To</label><input class="inp" id="lf_to" type="date">
+        <label>Reason</label><input class="inp" id="lf_reason" placeholder="Reason">
+        <button class="btn" onclick="saveLeave()">Submit</button>
         <p id="leaveMsg" class="small-muted"></p>
     `;
-}
+};
 
-window.submitLeave = async function () {
-    const user = auth.currentUser;
+window.saveLeave = async function () {
     const name = document.getElementById('lf_name').value.trim();
-    const regno = document.getElementById('lf_reg').value.trim();
+    const reg = document.getElementById('lf_reg').value.trim();
     const from = document.getElementById('lf_from').value;
     const to = document.getElementById('lf_to').value;
     const reason = document.getElementById('lf_reason').value.trim();
-
-    if (!name || !regno || !from || !to || !reason) {
-        alert("Fill all fields");
-        return;
-    }
-
+    if (!name || !reg || !from || !to || !reason) { alert('Fill all fields'); return; }
     await addDoc(collection(db, "leave_requests"), {
-        email: user.email,
-        name, regno, from, to, reason,
-        status: "Pending",
-        createdAt: new Date().toISOString()
+        uid: UID, name, regno: reg, from, to, reason, status: 'Pending', createdAt: new Date().toISOString()
     });
-
-    document.getElementById("leaveMsg").textContent = "✅ Leave Submitted";
-    setTimeout(loadLeave, 1000);
+    document.getElementById('leaveMsg').textContent = "Leave request submitted ✅";
 };
+
 
 /* ===================== FOOD MENU (student view) ===================== */
 window.loadMenu = async function () {
