@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Student Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <style>
+        body { margin:0; font-family:Arial, sans-serif; background: url("college.jpg") center/cover no-repeat; color:#222; }
+        .topbar { display:flex; align-items:center; justify-content:space-between; padding:14px 22px; background:rgba(255,255,255,0.85); box-shadow:0 2px 6px rgba(0,0,0,0.15); }
+        .menu-btn { font-size:26px; cursor:pointer; }
+        .logo { width:65px; }
+        .sidebar { width:250px; background:#2d2d2d; height:100vh; position:fixed; left:-260px; top:0; padding-top:65px; transition:0.35s; color:white; z-index:999; }
+        .sidebar a { display:block; padding:14px 20px; text-decoration:none; color:white; border-bottom:1px solid rgba(255,255,255,0.12); cursor:pointer; }
+        .sidebar a:hover { background:#444; }
+        .close-menu { position:absolute; top:15px; right:15px; font-size:26px; cursor:pointer; }
+        #mainContent { margin:80px auto 40px; padding:20px; width:90%; max-width:960px; background:rgba(255,255,255,0.85); border-radius:10px; box-shadow:0 6px 18px rgba(0,0,0,0.08); }
+        .inp, textarea, select { width:100%; padding:10px; margin:8px 0; border:1px solid #bbb; border-radius:6px; box-sizing:border-box; }
+        .btn { padding:10px 14px; margin-top:8px; border:none; border-radius:6px; cursor:pointer; background:#4CAF50; color:white; }
+        .btn-danger { background:#e53935; }
+        table { width:100%; border-collapse:collapse; margin-top:12px; background:white; }
+        th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+        th { background:#f4f4f4; }
+        .small-muted { color:#666; font-size:0.9rem; }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <span class="menu-btn" onclick="openMenu()">☰</span>
+    <h2>Student Dashboard</h2>
+    <img class="logo" src="logo.png" alt="logo">
+</div>
+
+<div id="sidebar" class="sidebar" aria-hidden="true">
+    <span class="close-menu" onclick="closeMenu()">←</span>
+    <a onclick="loadProfile()">👤 View / Edit Profile</a>
+    <a onclick="loadAttendance()">📅 Attendance</a>
+    <a onclick="loadOutpass()">🏃 Outpass Request</a>
+    <a onclick="loadLeave()">📝 Leave Form</a>
+    <a onclick="loadMenu()">🍽 Food Menu</a>
+    <a onclick="loadComplaint()">📨 Complaints</a>
+    <a onclick="loadFeedback()">⭐ Feedback</a>
+    <a onclick="loadAnnouncements()">📢 Announcements</a>
+    <a onclick="loadWash()">👕 Washing Machine</a>
+    <a onclick="loadNotifications()">🔔 Notifications</a>
+    <a onclick="logout()">🚪 Logout</a>
+</div>
+
+<div id="mainContent">
+    <h2>Welcome Student</h2>
+    <p class="small-muted">Use the left menu to access features. Your profile will load automatically after sign-in.</p>
+</div>
+
+<script type="module">
+/* ===================== FIREBASE SETUP ===================== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+import {
+  getFirestore, collection, addDoc, getDocs, doc, getDoc,
+  query, where, updateDoc, deleteDoc, orderBy
+} from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDeWKD3G8FE5cV36xn9nSIUXVRwbR-0L-w",
+    authDomain: "hostelmanagementsystem-151e6.firebaseapp.com",
+    projectId: "hostelmanagementsystem-151e6",
+    storageBucket: "hostelmanagementsystem-151e6.firebasestorage.app",
+    messagingSenderId: "630182817513",
+    appId: "1:630182817513:web:42a96594193646bd31ca78"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+/* ===================== STATE ===================== */
+let UID = null;           // the authenticated user's uid
+let STUDENT_DOC = null;   // will hold { type: 'users'|'students', id: <docId> }
+
+/* ===================== HELPERS ===================== */
+function escapeHtml(s) {
+    if (s === null || s === undefined) return "";
+    return String(s).replace(/[&<>"'`=\/]/g, function (c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#96;','=':'&#61;'}[c];
+    });
+}
+const mainContent = document.getElementById('mainContent');
+
+/* ===================== AUTH CHECK ===================== */
+onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+        location.href = "index.html";
+        return;
+    }
+    UID = user.uid;
+    // attempt to find student's profile in 'users' collection by UID first
+    const usersSnap = await getDoc(doc(db, "users", UID));
+    if (usersSnap.exists()) {
+        STUDENT_DOC = { type: 'users', id: UID, data: usersSnap.data() };
+    } else {
+        // fallback: find in 'students' collection by email
+        const q = query(collection(db, "students"), where("email", "==", user.email));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+            const d = snap.docs[0];
+            STUDENT_DOC = { type: 'students', id: d.id, data: d.data() };
+        } else {
+            // no profile found: keep STUDENT_DOC null, but still show dashboard
+            STUDENT_DOC = null;
+        }
+    }
+    loadProfile(); // load profile view automatically
+});
+
+/* ===================== UI: Sidebar open/close ===================== */
+window.openMenu = () => document.getElementById('sidebar').style.left = '0px';
+window.closeMenu = () => document.getElementById('sidebar').style.left = '-260px';
+
+/* ===================== PROFILE (View + Edit) ===================== */
+window.loadProfile = async function () {
+    closeMenu();
+    mainContent.innerHTML = "<h2>My Profile</h2><p>Loading...</p>";
+
+    // If we have STUDENT_DOC data from auth time, use it; otherwise attempt to fetch again.
+    if (!STUDENT_DOC) {
+        const user = auth.currentUser;
+        if (!user) { mainContent.innerHTML = "<p style='color:red'>Not signed in</p>"; return; }
+        // try users by UID
+        const uSnap = await getDoc(doc(db, "users", user.uid));
+        if (uSnap.exists()) {
+            STUDENT_DOC = { type: 'users', id: user.uid, data: uSnap.data() };
+        } else {
+            const q = query(collection(db, "students"), where("email", "==", user.email));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+                const d = snap.docs[0];
+                STUDENT_DOC = { type: 'students', id: d.id, data: d.data() };
+            } else {
+                mainContent.innerHTML = `<h2>Profile</h2><p style="color:red">Profile not found. Contact admin.</p>`;
+                return;
+            }
+        }
+    }
+
+    const data = STUDENT_DOC.data || {};
+    // Render profile table and Edit button
+    mainContent.innerHTML = `
+        <h2 style="font-weight:bold;">My Profile</h2>
+        <table style="max-width:700px;">
+            <tr><th style="width:180px">Field</th><th>Value</th></tr>
+            <tr><td><b>Name</b></td><td>${escapeHtml(data.name||'')}</td></tr>
+            <tr><td><b>Register No</b></td><td>${escapeHtml(data.regno||'')}</td></tr>
+            <tr><td><b>Department</b></td><td>${escapeHtml(data.department||'')}</td></tr>
+            
+            <tr><td><b>Room No</b></td><td>${escapeHtml(data.room||'')}</td></tr>
+            <tr><td><b>Phone</b></td><td>${escapeHtml(data.contact||'')}</td></tr>
+            <tr><td><b>Email</b></td><td>${escapeHtml(data.email||'')}</td></tr>
+        </table>
+        <div style="margin-top:12px">
+            <button class="btn" onclick="editProfile()">✏ Edit Profile</button>
+        </div>
+    `;
+};
+
+// Edit profile form
+window.editProfile = async function () {
+    if (!STUDENT_DOC) { mainContent.innerHTML = "<p style='color:red'>No profile to edit</p>"; return; }
+    // Ensure fresh data
+    const ref = doc(db, STUDENT_DOC.type, STUDENT_DOC.id);
+    const snap = await getDoc(ref);
+    const s = snap.exists() ? snap.data() : (STUDENT_DOC.data || {});
+
+    mainContent.innerHTML = `
+        <h2>Edit Profile</h2>
+        <label>Name</label>
+        <input class="inp" id="edit_name" value="${escapeHtml(s.name||'')}">
+        <label>Phone</label>
+        <input class="inp" id="edit_phone" value="${escapeHtml(s.phone||'')}">
+        <label>Room No</label>
+        <input class="inp" id="edit_room" value="${escapeHtml(s.room||'')}">
+        <label>Department</label>
+        <input class="inp" id="edit_dept" value="${escapeHtml(s.department||'')}">
+        <label>Batch</label>
+        <input class="inp" id="edit_batch" value="${escapeHtml(s.batch||'')}">
+        <div style="margin-top:10px">
+            <button class="btn" onclick="saveProfile()">✅ Save</button>
+            <button class="btn btn-danger" style="margin-left:8px" onclick="loadProfile()">Cancel</button>
+        </div>
+    `;
+};
+
+// Save profile (updates the same doc in either 'users' or 'students')
+window.saveProfile = async function () {
+    if (!STUDENT_DOC) { alert("No profile document found to update."); return; }
+    const ref = doc(db, STUDENT_DOC.type, STUDENT_DOC.id);
+    const payload = {
+        name: document.getElementById('edit_name').value.trim(),
+        phone: document.getElementById('edit_phone').value.trim(),
+        room: document.getElementById('edit_room').value.trim(),
+        department: document.getElementById('edit_dept').value.trim(),
+        batch: document.getElementById('edit_batch').value.trim()
+    };
+    await updateDoc(ref, payload);
+    // update local snapshot
+    STUDENT_DOC.data = { ...(STUDENT_DOC.data||{}), ...payload };
+    alert("Profile updated ✅");
+    loadProfile();
+};
+
+/* =================== ATTENDANCE =================== */
+window.loadAttendance = async function () {
+    closeMenu();
+    mainContent.innerHTML = `<h2>Attendance</h2><p>Checking...</p>`;
+
+    let today = new Date().toISOString().slice(0, 10);
+
+    // ✅ find today's attendance for this user
+    const q = query(
+        collection(db, "attendance"),
+        where("uid", "==", UID),
+        where("date", "==", today)
+    );
+
+    const snap = await getDocs(q);
+
+    // ✅ if attendance already submitted, show status
+    if (!snap.empty) {
+        const data = snap.docs[0].data();
+        mainContent.innerHTML = `
+            <h2>Attendance</h2>
+            <div class="card">
+                <p style="color:green; font-weight:bold;">✅ Attendance already submitted today.</p>
+                <p><strong>Status:</strong> ${data.status}</p>
+                <p><strong>Name:</strong> ${data.name}</p>
+                <p><strong>Register No:</strong> ${data.regno}</p>
+            </div>
+        `;
+        return;
+    }
+
+    // ✅ Attendance form if not submitted
+    mainContent.innerHTML = `
+        <h2>Attendance</h2>
+        <label>Name</label>
+        <input class="inp" id="att_name" placeholder="Your name" value="${STUDENT_DOC?.data()?.name || ''}">
+        
+        <label>Register Number</label>
+        <input class="inp" id="att_reg" placeholder="Register number" value="${STUDENT_DOC?.data()?.regno || ''}">
+        
+        <label>Status</label>
+        <select id="att_status" class="inp">
+            <option value="">-- select --</option>
+            <option>Present</option>
+            <option>Absent</option>
+        </select>
+
+        <button class="btn" onclick="markAttendance()">Submit</button>
+        <p id="attMsg" class="small-muted"></p>
+    `;
+};
+
+
+window.markAttendance = async function () {
+    const name = document.getElementById('att_name').value.trim();
+    const reg = document.getElementById('att_reg').value.trim();
+    const status = document.getElementById('att_status').value;
+    let today = new Date().toISOString().slice(0, 10);
+
+    if (!name || !reg || !status) {
+        alert("Fill all fields");
+        return;
+    }
+
+    // ✅ Save attendance
+    await addDoc(collection(db, "attendance"), {
+        uid: UID,
+        name,
+        regno: reg,
+        status,
+        date: today,
+        time: new Date().toLocaleTimeString()
+    });
+
+    document.getElementById("attMsg").textContent = "✅ Attendance Submitted";
+
+    // ✅ Reload page to show status
+    setTimeout(() => loadAttendance(), 600);
+};
+
+
+/* ===================== OUTPASS ===================== */
+window.loadOutpass = function () {
+    closeMenu();
+    mainContent.innerHTML = `
+        <h2>Outpass Request</h2>
+        <label>Name</label><input class="inp" id="op_name" placeholder="Name">
+        <label>Reason</label><input class="inp" id="op_reason" placeholder="Reason">
+        <label>Date (going)</label><input class="inp" id="op_date" type="date">
+        <button class="btn" onclick="saveOutpass()">Submit</button>
+        <p id="opMsg" class="small-muted"></p>
+    `;
+};
+
+window.saveOutpass = async function () {
+    const name = document.getElementById('op_name').value.trim();
+    const reason = document.getElementById('op_reason').value.trim();
+    const date = document.getElementById('op_date').value;
+    if (!name || !reason || !date) { alert('Fill all fields'); return; }
+    await addDoc(collection(db, "outpass"), {
+        uid: UID, name, reason, date, status: 'Pending', createdAt: new Date().toISOString()
+    });
+    document.getElementById('opMsg').textContent = "Outpass submitted ✅";
+};
+
+/* ================= STUDENT - Leave Form ================= */
+window.loadLeave = async function () {
+    closeMenu();
+    mainContent.innerHTML = `<h2>Leave Form</h2><p>Checking...</p>`;
+
+    const user = auth.currentUser;
+
+    // check latest leave request for this student
+    const q = query(
+        collection(db, "leave_requests"),
+        where("email", "==", user.email),
+        orderBy("createdAt", "desc"),
+        limit(1)
+    );
+    const snap = await getDocs(q);
+
+    if (!snap.empty) {
+        const docData = snap.docs[0].data();
+        const status = docData.status;
+
+        // ✅ If Pending → block new form
+        if (status === "Pending") {
+            mainContent.innerHTML = `
+                <h2>Leave Status</h2>
+                <p><b>Reason:</b> ${escapeHtml(docData.reason)}</p>
+                <p><b>From:</b> ${escapeHtml(docData.from)}</p>
+                <p><b>To:</b> ${escapeHtml(docData.to)}</p>
+                <p style="color:orange; font-weight:bold;">⏳ Status: Pending</p>
+            `;
+            return;
+        }
+
+        // ✅ Show last result if Approved or Rejected
+        const color = status === "Approved" ? "green" : "red";
+        mainContent.innerHTML = `
+            <h2>Last Leave Result</h2>
+            <p><b>Reason:</b> ${escapeHtml(docData.reason)}</p>
+            <p><b>From:</b> ${escapeHtml(docData.from)}</p>
+            <p><b>To:</b> ${escapeHtml(docData.to)}</p>
+            <p style="color:${color}; font-weight:bold;">Status: ${status}</p>
+            <br>
+            <button class="btn" onclick="showLeaveForm()">Apply New Leave</button>
+        `;
+        return;
+    }
+
+    // ✅ If no history → show form
+    showLeaveForm();
+};
+
+function showLeaveForm() {
+    mainContent.innerHTML = `
+        <h2>Leave Form</h2>
+        <label>Name</label>
+        <input class="inp" id="lf_name" placeholder="Your Name">
+        
+        <label>Register Number</label>
+        <input class="inp" id="lf_reg" placeholder="Register Number">
+
+        <label>From</label>
+        <input class="inp" id="lf_from" type="date">
+
+        <label>To</label>
+        <input class="inp" id="lf_to" type="date">
+
+        <label>Reason</label>
+        <input class="inp" id="lf_reason" placeholder="Reason">
+
+        <button class="btn" onclick="submitLeave()">Submit</button>
+        <p id="leaveMsg" class="small-muted"></p>
+    `;
+}
+
+window.submitLeave = async function () {
+    const user = auth.currentUser;
+    const name = document.getElementById('lf_name').value.trim();
+    const regno = document.getElementById('lf_reg').value.trim();
+    const from = document.getElementById('lf_from').value;
+    const to = document.getElementById('lf_to').value;
+    const reason = document.getElementById('lf_reason').value.trim();
+
+    if (!name || !regno || !from || !to || !reason) {
+        alert("Fill all fields");
+        return;
+    }
+
+    await addDoc(collection(db, "leave_requests"), {
+        email: user.email,
+        name, regno, from, to, reason,
+        status: "Pending",
+        createdAt: new Date().toISOString()
+    });
+
+    document.getElementById("leaveMsg").textContent = "✅ Leave Submitted";
+    setTimeout(loadLeave, 1000);
+};
+
+/* ===================== FOOD MENU (student view) ===================== */
+window.loadMenu = async function () {
+    closeMenu();
+    mainContent.innerHTML = `<h2>Weekly Food Menu</h2><p>Loading...</p>`;
+    const snap = await getDocs(collection(db, "weekly_menu"));
+    if (snap.empty) { mainContent.innerHTML = `<h2>Food Menu</h2><p>No menu available</p>`; return; }
+    let html = `<h2>Food Menu</h2><table><tr><th>Week</th><th>Day</th><th>Breakfast</th><th>Lunch</th><th>Snacks</th><th>Dinner</th></tr>`;
+    snap.forEach(d => {
+        const m = d.data();
+        html += `<tr>
+            <td>${escapeHtml(m.week||'')}</td>
+             <td>${escapeHtml(m.day||'')}</td>
+            <td>${escapeHtml(m.breakfast||'')}</td>
+            <td>${escapeHtml(m.lunch||'')}</td>
+            <td>${escapeHtml(m.snacks||'')}</td>
+            <td>${escapeHtml(m.dinner||'')}</td>
+        </tr>`;
+    });
+    html += `</table>`;
+    mainContent.innerHTML = html;
+};
+
+/* ===================== COMPLAINTS ===================== */
+window.loadComplaint = function () {
+    closeMenu();
+    mainContent.innerHTML = `
+        <h2>Submit Complaint</h2>
+        <label>Name</label><input class="inp" id="c_name" placeholder="Name">
+        <label>Register Number</label><input class="inp" id="c_reg" placeholder="Register number">
+        <label>Message</label><textarea class="inp" id="c_msg" rows="4" placeholder="Complaint"></textarea>
+        <button class="btn" onclick="sendComplaint()">Submit</button>
+        <p id="compMsg" class="small-muted"></p>
+    `;
+};
+
+window.sendComplaint = async function () {
+    const name = document.getElementById('c_name').value.trim();
+    const reg = document.getElementById('c_reg').value.trim();
+    const msg = document.getElementById('c_msg').value.trim();
+    if (!name || !reg || !msg) { alert('Fill all fields'); return; }
+    await addDoc(collection(db, "complaints"), {
+        uid: UID, name, regno: reg, message: msg, status: 'Pending', createdAt: new Date().toISOString()
+    });
+    document.getElementById('compMsg').textContent = "Complaint submitted ✅";
+};
+
+/* ===================== FEEDBACK (rating only) ===================== */
+window.loadFeedback = function () {
+    closeMenu();
+    mainContent.innerHTML = `
+        <h2>Feedback</h2>
+        <label>Rating</label>
+        <select id="rating" class="inp">
+            <option value="">Select rating</option>
+            <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+        </select>
+        
+        
+        <button class="btn" onclick="sendFeedback()">Submit</button>
+        <p id="feedMsg" class="small-muted"></p>
+    `;
+};
+
+window.sendFeedback = async function () {
+    const rating = document.getElementById('rating').value;
+    if (!rating) { alert('Please select rating'); return; }
+    // include basic student info where possible
+    const payload = { uid: UID, rating, createdAt: new Date().toISOString() };
+    if (STUDENT_DOC && STUDENT_DOC.data) {
+        payload.name = STUDENT_DOC.data.name || '';
+        payload.regno = STUDENT_DOC.data.regno || '';
+    }
+    await addDoc(collection(db, "feedback"), payload);
+    document.getElementById('feedMsg').textContent = "Feedback submitted ✅";
+};
+
+/* ===================== ANNOUNCEMENTS (title bold + message) ===================== */
+window.loadAnnouncements = async function () {
+    closeMenu();
+    mainContent.innerHTML = `<h2>Announcements</h2><p>Loading...</p>`;
+
+    const snap = await getDocs(collection(db, "announcements"));
+    if (snap.empty) { mainContent.innerHTML = `<h2>Announcements</h2><p>No announcements</p>`; return; }
+
+    let html = `<h2>Announcements</h2><ul style="list-style:none;padding-left:0;">`;
+    snap.forEach(d => {
+        const it = d.data();
+        const title = it.title || it.heading || "Announcement";
+        // multiple possible fields for content
+        const message = it.message || it.text || it.announcement || "(no message)";
+        const when = it.createdAt ? ` <small style="color:#666">(${new Date(it.createdAt).toLocaleString()})</small>` : '';
+        html += `<li style="background:#fff;padding:12px;margin-bottom:10px;border-radius:8px;">
+            <div style="font-weight:700;font-size:1.05em;">${escapeHtml(title)}</div>
+            <div style="margin-top:6px">${escapeHtml(message)}</div>
+            <div style="margin-top:6px;color:#666;font-size:0.9em;">${when}</div>
+        </li>`;
+    });
+    html += `</ul>`;
+    mainContent.innerHTML = html;
+};
+/* ===================== NOTIFICATIONS ===================== */
+window.loadNotifications = async function () {
+    closeMenu();
+    mainContent.innerHTML = `<h2>Notifications</h2><p>Loading...</p>`;
+
+    // Load Outpass Status
+    const outpassQ = query(collection(db, "outpass"), where("uid", "==", UID));
+    const outSnap = await getDocs(outpassQ);
+
+    // Load Leave Status
+    const leaveQ = query(collection(db, "leave_requests"), where("uid", "==", UID));
+    const leaveSnap = await getDocs(leaveQ);
+
+    // Load Complaint Status
+    const compQ = query(collection(db, "complaints"), where("uid", "==", UID));
+    const compSnap = await getDocs(compQ);
+
+    let html = `<h2>Notifications</h2><ul style="list-style:none;padding-left:0;">`;
+
+    let hasData = false;
+
+    outSnap.forEach(d => {
+        hasData = true;
+        let x = d.data();
+        html += `
+            <li style="background:#fff;padding:12px;margin-bottom:10px;border-radius:8px;">
+                <b>Outpass:</b> ${escapeHtml(x.reason)}<br>
+                <b>Status:</b> ${x.status}
+            </li>`;
+    });
+
+    leaveSnap.forEach(d => {
+        hasData = true;
+        let x = d.data();
+        html += `
+            <li style="background:#fff;padding:12px;margin-bottom:10px;border-radius:8px;">
+                <b>Leave:</b> ${escapeHtml(x.reason)} (${x.from} to ${x.to})<br>
+                <b>Status:</b> ${x.status}
+            </li>`;
+    });
+
+    compSnap.forEach(d => {
+        hasData = true;
+        let x = d.data();
+        html += `
+            <li style="background:#fff;padding:12px;margin-bottom:10px;border-radius:8px;">
+                <b>Complaint:</b> ${escapeHtml(x.message)}<br>
+                <b>Status:</b> ${x.status}
+            </li>`;
+    });
+
+    html += `</ul>`;
+
+    if (!hasData) {
+        html = `<h2>Notifications</h2><p>No notifications yet</p>`;
+    }
+
+    mainContent.innerHTML = html;
+};
+
+
+/* ===================== WASHING MACHINE BOOKING ===================== */
+window.loadWash = function () {
+    closeMenu();
+    mainContent.innerHTML = `
+        <h2>Washing Machine Booking</h2>
+        <label>Select Date</label>
+        <input class="inp" id="wash_date" type="date">
+        <button class="btn" onclick="bookWash()">Book</button>
+        <p id="washMsg" class="small-muted"></p>
+    `;
+};
+
+window.bookWash = async function () {
+    const date = document.getElementById('wash_date').value;
+    if (!date) { alert('Select a date'); return; }
+    await addDoc(collection(db, "wash_booking"), {
+        uid: UID, date, createdAt: new Date().toISOString()
+    });
+    document.getElementById('washMsg').textContent = "Booking confirmed ✅";
+};
+
+
+/* ===================== LOGOUT ===================== */
+
+
+window.logout = function () {
+    if (confirm('Logout?')) signOut(auth).then(()=> location.href = 'index.html');
+};
+
+/* ===================== UTILITY: close menu when clicking outside ===================== */
+document.addEventListener('click', (e) => {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar.contains(e.target) && e.target.closest('.menu-btn') === null) {
+        sidebar.style.left = '-260px';
+    }
+});
+</script>
+
+</body>
+</html>

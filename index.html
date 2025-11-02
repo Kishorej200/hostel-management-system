@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Login — Hostel Portal</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: url("college.jpg") no-repeat center center/cover;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .container {
+      width: 360px;
+      background: rgba(255,255,255,0.94);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+      text-align: center;
+    }
+    .logo { width: 110px; margin-bottom: 8px; }
+    input {
+      width: 94%;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 6px;
+      border: 1px solid #bbb;
+      box-sizing: border-box;
+    }
+    button {
+      width: 96%;
+      padding: 10px;
+      border: none;
+      background: #4e54c8;
+      color: #fff;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    #msg { margin-top: 10px; min-height: 18px; }
+    a { color: #1155cc; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <img src="logo.png" class="logo" alt="college logo">
+    <h2>Login</h2>
+
+    <input id="email" type="email" placeholder="Email" />
+    <input id="password" type="password" placeholder="Password" />
+    <button id="loginBtn" onclick="login()">Login</button>
+
+    <p style="margin-top:10px;">
+      Don't have an account?
+      <a href="signup.html">Sign Up</a>
+    </p>
+
+    <div id="msg"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+
+   const firebaseConfig = {
+  apiKey: "AIzaSyDeWKD3G8FE5cV36xn9nSIUXVRwbR-0L-w",
+  authDomain: "hostelmanagementsystem-151e6.firebaseapp.com",
+  projectId: "hostelmanagementsystem-151e6",
+  storageBucket: "hostelmanagementsystem-151e6.firebasestorage.app",
+  messagingSenderId: "630182817513",
+  appId: "1:630182817513:web:42a96594193646bd31ca78"
+};
+
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    window.login = async function () {
+      const msgEl = document.getElementById("msg");
+      msgEl.style.color = "red";
+      msgEl.textContent = "";
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      if (!email || !password) {
+        msgEl.textContent = "Enter email and password.";
+        return;
+      }
+
+      const btn = document.getElementById("loginBtn");
+      btn.disabled = true;
+      btn.textContent = "Logging in...";
+
+      try {
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        const user = cred.user;
+
+        // Fetch role from Firestore
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (!userDoc.exists()) {
+          msgEl.textContent = "User profile not found in database.";
+          return;
+        }
+
+        const data = userDoc.data();
+        if (data.role === "student") {
+          window.location.href = "student.html";
+        } else if (data.role === "warden") {
+          window.location.href = "warden.html";
+        } else {
+          msgEl.textContent = "Unknown user role.";
+        }
+
+      } catch (err) {
+        msgEl.textContent = err.message || "Login failed";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Login";
+      }
+    };
+  </script>
+
+</body>
+</html>

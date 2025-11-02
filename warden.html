@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Warden Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: url("college.jpg") no-repeat center center/cover;
+            color: #222;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 22px;
+            background: rgba(255,255,255,0.85);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+
+        .menu-btn {
+            font-size: 26px;
+            cursor: pointer;
+            padding: 6px 12px;
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        .logo {
+            width: 65px;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #2d2d2d;
+            height: 100vh;
+            position: fixed;
+            left: -260px;
+            top: 0;
+            padding-top: 60px;
+            transition: 0.4s;
+            color: white;
+            z-index: 999;
+        }
+
+        .sidebar a {
+            display: block;
+            padding: 14px 20px;
+            color: white;
+            text-decoration: none;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+            cursor: pointer;
+        }
+
+        .sidebar a:hover {
+            background: #444;
+        }
+
+        .close-menu {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 26px;
+            cursor: pointer;
+        }
+
+        .card {
+            width: 90%;
+            background: rgba(255,255,255,0.75);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 80px auto;
+            border: 1px solid #ddd;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background: white;
+        }
+
+        td, th {
+            border: 1px solid #777;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .approve { background: #4caf50; color: white; }
+        .reject { background: #f44336; color: white; }
+
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <div class="menu-btn" onclick="openMenu()">☰</div>
+    <div class="title">Hostel Management - Warden</div>
+    <img src="logo.png" class="logo">
+</div>
+
+<div class="sidebar" id="sidebar">
+    <span class="close-menu" onclick="closeMenu()">←</span>
+    <a onclick="loadStudents()">📋 Registered Students</a>
+    <a onclick="loadAttendance()">📅 Attendance</a>
+    <a onclick="loadOutpass()">🏃 Outpass Requests</a>
+    <a onclick="loadLeave()">📝 Leave Forms</a>
+    <a onclick="loadComplaints()">📨 Complaints</a>
+    <a onclick="loadFeedback()">⭐ Feedback</a>
+    <a onclick="loadAnnouncements()">📢 Announcements</a>
+    <a onclick="loadFood()">🍽 Food Menu</a>
+    <a onclick="logout()">🚪 Logout</a>
+</div>
+
+<div class="card" id="mainContent">
+    <h2>Welcome Warden</h2>
+    <p>Select an option from the menu.</p>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+import { getFirestore, collection, getDocs, updateDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDeWKD3G8FE5cV36xn9nSIUXVRwbR-0L-w",
+    authDomain: "hostelmanagementsystem-151e6.firebaseapp.com",
+    projectId: "hostelmanagementsystem-151e6",
+    storageBucket: "hostelmanagementsystem-151e6.firebasestorage.app",
+    messagingSenderId: "630182817513",
+    appId: "1:630182817513:web:42a96594193646bd31ca78"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+onAuthStateChanged(auth, user => {
+    if (!user) window.location.href = "index.html";
+});
+
+window.openMenu = () => sidebar.style.left = "0px";
+window.closeMenu = () => sidebar.style.left = "-260px";
+
+window.logout = function () {
+    if (confirm("Are you sure you want to logout?")) {
+        signOut(auth);
+        window.location.href = "index.html";
+    }
+};
+
+// ✅ Load Registered Students from Firebase
+window.loadStudents = async function () {
+    closeMenu();
+    const snap = await getDocs(collection(db, "users"));
+
+    let html = `<h2>Registered Students</h2>
+    <table>
+    <tr><th>Name</th><th>Reg No</th><th>Dept</th><th>Room</th><th>Email</th></tr>`;
+
+    snap.forEach(d => {
+        let s = d.data();
+        if (s.role === "student") {
+            html += `
+            <tr>
+                <td>${s.name}</td>
+                <td>${s.regno}</td>
+                <td>${s.department}</td>
+                <td>${s.room}</td>
+                <td>${s.email}</td>
+            </tr>`;
+        }
+    });
+
+    html += `</table>`;
+    mainContent.innerHTML = html;
+};
+// ✅ 2. Attendance (View Saved Attendance Records)
+window.loadAttendance = async function () {
+    closeMenu();
+    mainContent.innerHTML = `<h2>Loading Attendance...</h2>`;
+
+    const snap = await getDocs(collection(db, "attendance"));
+
+    if (snap.empty) {
+        mainContent.innerHTML = `<h2>Attendance</h2><p>No attendance records found.</p>`;
+        return;
+    }
+
+    let html = `<h2>Attendance Records</h2>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Reg No</th>
+            <th>Date</th>
+            <th>Status</th>
+        </tr>`;
+
+    snap.forEach(docu => {
+        const d = docu.data();
+        html += `
+        <tr>
+            <td>${d.name || ""}</td>
+            <td>${d.regno || ""}</td>
+            <td>${d.date || ""}</td>
+            <td>${d.status || ""}</td>
+        </tr>`;
+    });
+
+    html += `</table>`;
+    mainContent.innerHTML = html;
+};
+
+
+// ✅ Load Outpass Requests
+window.loadOutpass = async function () {
+    closeMenu();
+    const snap = await getDocs(collection(db, "outpass"));
+
+    let html = `<h2>Outpass Requests</h2><table>
+    <tr><th>Name</th><th>Reason</th><th>Date</th><th>Action</th></tr>`;
+
+    snap.forEach(d => {
+        let info = d.data();
+        html += `
+        <tr>
+            <td>${info.name}</td>
+            <td>${info.reason}</td>
+            <td>${info.date}</td>
+            <td>
+                <button class="btn approve" onclick="approveOutpass('${d.id}')">Approve</button>
+                <button class="btn reject" onclick="rejectOutpass('${d.id}')">Reject</button>
+            </td>
+        </tr>`;
+    });
+
+    html += `</table>`;
+    mainContent.innerHTML = html;
+};
+
+window.approveOutpass = async function (id) {
+    await updateDoc(doc(db, "outpass", id), { status: "Approved" });
+    alert("✅ Outpass Approved");
+    loadOutpass();
+};
+
+window.rejectOutpass = async function (id) {
+    await deleteDoc(doc(db, "outpass", id));
+    alert("❌ Outpass Rejected");
+    loadOutpass();
+};
+// ---------- additional imports (allowed in same module) ----------
+import { addDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+
+// ---------- 4. Leave Requests (Approve/Reject) ----------
+window.loadLeave = async function () {
+  closeMenu();
+  const snap = await getDocs(collection(db, "leave_requests"));
+  let html = `<h2>Leave Requests</h2><table>
+    <tr><th>Name</th><th>RegNo</th><th>From</th><th>To</th><th>Reason</th><th>Action</th></tr>`;
+  snap.forEach(d => {
+    const it = d.data();
+    html += `<tr>
+      <td>${escapeHtml(it.name || "")}</td>
+      <td>${escapeHtml(it.regno || "")}</td>
+      <td>${escapeHtml(it.from || "")}</td>
+      <td>${escapeHtml(it.to || "")}</td>
+      <td>${escapeHtml(it.reason || "")}</td>
+      <td>
+        <button class="btn approve" onclick="approveLeave('${d.id}')">Approve</button>
+        <button class="btn reject" onclick="rejectLeave('${d.id}')">Reject</button>
+      </td>
+    </tr>`;
+  });
+  html += `</table>`;
+  mainContent.innerHTML = html;
+};
+
+window.approveLeave = async function (id) {
+  await updateDoc(doc(db, "leave_requests", id), { status: "Approved", processedAt: new Date().toISOString() });
+  alert("✅ Leave Approved");
+  loadLeave();
+};
+
+window.rejectLeave = async function (id) {
+  await updateDoc(doc(db, "leave_requests", id), { status: "Rejected", processedAt: new Date().toISOString() });
+  alert("❌ Leave Rejected");
+  loadLeave();
+};
+
+// ---------- 5. Complaints ----------
+window.loadComplaints = async function () {
+  closeMenu();
+  const snap = await getDocs(collection(db, "complaints"));
+  let html = `<h2>Complaints</h2><table>
+    <tr><th>Name</th><th>RegNo</th><th>Message</th><th>Status</th><th>Action</th></tr>`;
+  snap.forEach(d => {
+    const it = d.data();
+    html += `<tr>
+      <td>${escapeHtml(it.name||'')}</td>
+      <td>${escapeHtml(it.regno||'')}</td>
+      <td style="text-align:left">${escapeHtml(it.message||'')}</td>
+      <td>${escapeHtml(it.status||'Open')}</td>
+      <td><button class="btn" onclick="resolveComplaint('${d.id}')">Mark Resolved</button></td>
+    </tr>`;
+  });
+  html += `</table>`;
+  mainContent.innerHTML = html;
+};
+
+window.resolveComplaint = async function (id) {
+  if (!confirm("Mark this complaint resolved?")) return;
+  await updateDoc(doc(db, "complaints", id), { status: "Resolved", resolvedAt: new Date().toISOString() });
+  alert("Complaint marked resolved");
+  loadComplaints();
+};
+
+// ---------- 6. Feedback ----------
+window.loadFeedback = async function () {
+  closeMenu();
+  const snap = await getDocs(collection(db, "feedback"));
+  let html = `<h2>Feedback</h2>`;
+  if (snap.empty) html += `<p>No feedback yet.</p>`;
+  else {
+    html += `<div>`;
+    snap.forEach(d => {
+      const it = d.data();
+      html += `<div style="background:#fff;padding:10px;margin:8px 0;border-radius:6px">
+        <strong>${escapeHtml(it.name||'')}</strong> — Rating: ${escapeHtml(it.rating||'')}
+       
+        <p>${escapeHtml(it.message||'')}</p>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  mainContent.innerHTML = html;
+};
+
+// ---------- 7. Announcements (Post + Delete) ----------
+window.loadAnnouncements = async function () {
+  closeMenu();
+  const snap = await getDocs(collection(db, "announcements"));
+  let html = `<h2>Announcements</h2>
+    <div style="margin-bottom:12px">
+      <input id="ann_title" placeholder="Title" style="width:60%;padding:8px;margin-right:8px">
+      <input id="ann_msg" placeholder="Message" style="width:30%;padding:8px">
+      <button class="btn" onclick="postAnnouncement()">Post</button>
+    </div>
+    <div id="annList">Loading...</div>`;
+  mainContent.innerHTML = html;
+  await refreshAnnouncements();
+};
+
+async function refreshAnnouncements() {
+  const el = document.getElementById("annList");
+  const snap = await getDocs(collection(db, "announcements"));
+  if (snap.empty) {
+    el.innerHTML = "<p>No announcements</p>";
+    return;
+  }
+  let html = "";
+  snap.forEach(d => {
+    const it = d.data();
+    html += `<div style="background:#fff;padding:10px;margin:10px 0;border-radius:6px">
+      <strong>${escapeHtml(it.title||'')}</strong>
+      <p>${escapeHtml(it.message||'')}</p>
+      <div style="text-align:right"><button class="btn reject" onclick="deleteAnnouncement('${d.id}')">Delete</button></div>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+window.postAnnouncement = async function () {
+  const title = document.getElementById("ann_title").value.trim();
+  const msg = document.getElementById("ann_msg").value.trim();
+  if (!title || !msg) { alert("Title and message required"); return; }
+  await addDoc(collection(db, "announcements"), { title, message: msg, createdAt: new Date().toISOString() });
+  document.getElementById("ann_title").value = "";
+  document.getElementById("ann_msg").value = "";
+  refreshAnnouncements();
+};
+
+window.deleteAnnouncement = async function (id) {
+  if (!confirm("Delete this announcement?")) return;
+  await deleteDoc(doc(db, "announcements", id));
+  refreshAnnouncements();
+};
+
+/* ✅ FOOD MENU (Week + Day Selection) */
+window.loadFood = async function () {
+  closeMenu();
+
+  mainContent.innerHTML = `
+    <h2><b>Food Menu</b></h2>
+
+    <div class="card">
+      <label><b>Select Week</b></label>
+      <select id="week" style="padding:8px;width:40%;margin:10px 0">
+        <option>Week-1</option>
+        <option>Week-2</option>
+        <option>Week-3</option>
+        <option>Week-4</option>
+      </select>
+
+      <label><b>Select Day</b></label>
+      <select id="day" style="padding:8px;width:40%;margin:10px 0">
+        <option>Monday</option>
+        <option>Tuesday</option>
+        <option>Wednesday</option>
+        <option>Thursday</option>
+        <option>Friday</option>
+        <option>Saturday</option>
+        <option>Sunday</option>
+      </select>
+
+      <input id="breakfast" placeholder="Breakfast" style="padding:8px;width:60%;margin:5px 0">
+      <input id="lunch" placeholder="Lunch" style="padding:8px;width:60%;margin:5px 0">
+      <input id="snacks" placeholder="Snacks" style="padding:8px;width:60%;margin:5px 0">
+      <input id="dinner" placeholder="Dinner" style="padding:8px;width:60%;margin:5px 0">
+
+      <button class="btn approve" onclick="saveMenu()">Save Menu</button>
+    </div>
+
+    <div id="menulist" style="margin-top:25px">Loading menu...</div>
+  `;
+
+  await loadMenuTable();
+};
+
+
+/* ✅ SAVE WEEK + DAY MENU */
+window.saveMenu = async function () {
+  const week = document.getElementById("week").value;
+  const day = document.getElementById("day").value;
+  const breakfast = document.getElementById("breakfast").value.trim();
+  const lunch = document.getElementById("lunch").value.trim();
+  const snacks = document.getElementById("snacks").value.trim();
+  const dinner = document.getElementById("dinner").value.trim();
+
+  if (!breakfast || !lunch || !snacks || !dinner) {
+    alert("Fill all fields!");
+    return;
+  }
+
+  // ✅ Delete if same week & day exists
+  const snap = await getDocs(collection(db, "weekly_menu"));
+  for (let d of snap.docs) {
+    if (d.data().week === week && d.data().day === day) {
+      await deleteDoc(doc(db, "weekly_menu", d.id));
+    }
+  }
+
+  await addDoc(collection(db, "weekly_menu"), {
+    week,
+    day,
+    breakfast,
+    lunch,
+    snacks,
+    dinner,
+    time: Date.now()
+  });
+
+  alert("✅ Menu Saved");
+  loadMenuTable();
+};
+
+
+/* ✅ LOAD TABLE */
+window.loadMenuTable = async function () {
+  const area = document.getElementById("menulist");
+  const snap = await getDocs(collection(db, "weekly_menu"));
+
+  if (snap.empty) {
+    area.innerHTML = "<p>No menu added yet.</p>";
+    return;
+  }
+
+  let html = `
+    <table>
+      <tr>
+        <th>Week</th>
+        <th>Day</th>
+        <th>Breakfast</th>
+        <th>Lunch</th>
+        <th>Snacks</th>
+        <th>Dinner</th>
+        <th>Action</th>
+      </tr>
+  `;
+
+  snap.forEach(d => {
+    const m = d.data();
+    html += `
+      <tr>
+        <td>${m.week}</td>
+        <td>${m.day}</td>
+        <td>${m.breakfast}</td>
+        <td>${m.lunch}</td>
+        <td>${m.snacks}</td>
+        <td>${m.dinner}</td>
+        <td><button class="btn reject" onclick="deleteMenu('${d.id}')">Delete</button></td>
+      </tr>
+    `;
+  });
+
+  html += `</table>`;
+  area.innerHTML = html;
+};
+
+
+/* ✅ DELETE MENU */
+window.deleteMenu = async function (id) {
+  if (!confirm("Delete this menu?")) return;
+  await deleteDoc(doc(db, "weekly_menu", id));
+  loadMenuTable();
+};
+
+
+// ---------- Helpers ----------
+function escapeHtml(s) {
+    if (s === null || s === undefined) return "";
+    return String(s).replace(/[&<>"'`=\/]/g, function (c) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+            '/': '&#x2F;',
+            '`': '&#96;',
+            '=': '&#61;'
+        }[c];
+    });
+}
+
+// ---------- Done: ensure initial state ----------
+if (typeof updateSummaryCounts === "function") {
+    updateSummaryCounts();
+}
+</script>
+</body>
+</html>
+
