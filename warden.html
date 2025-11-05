@@ -114,6 +114,16 @@
 </div>
 
 <div class="sidebar" id="sidebar">
+  <!-- ✅ CLICK OUTSIDE AREA -->
+<div id="overlay" onclick="closeMenu()" style="
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.3);
+    display: none;
+    z-index: 998;
+"></div>
+
     <span class="close-menu" onclick="closeMenu()">←</span>
     <a onclick="loadStudents()">📋 Registered Students</a>
     <a onclick="loadAttendance()">📅 Attendance</a>
@@ -123,6 +133,8 @@
     <a onclick="loadFeedback()">⭐ Feedback</a>
     <a onclick="loadAnnouncements()">📢 Announcements</a>
     <a onclick="loadFood()">🍽 Food Menu</a>
+    <a onclick="loadRoomRequests()">🚪 Room Change Requests</a>
+
     <a onclick="logout()">🚪 Logout</a>
 </div>
 
@@ -153,8 +165,21 @@ onAuthStateChanged(auth, user => {
     if (!user) window.location.href = "index.html";
 });
 
-window.openMenu = () => sidebar.style.left = "0px";
-window.closeMenu = () => sidebar.style.left = "-260px";
+window.openMenu = () => {
+    sidebar.style.left = "0px";
+};
+
+window.closeMenu = () => {
+    sidebar.style.left = "-260px";
+};
+// Close menu if user clicks outside sidebar
+document.addEventListener("click", function (e) {
+    // If sidebar is open AND click is not inside sidebar AND not menu button
+    if (sidebar.style.left === "0px" && !sidebar.contains(e.target) && e.target.className !== "menu-btn") {
+        closeMenu();
+    }
+});
+
 
 window.logout = function () {
     if (confirm("Are you sure you want to logout?")) {
@@ -189,26 +214,53 @@ window.loadStudents = async function () {
     html += `</table>`;
     mainContent.innerHTML = html;
 };
-// ✅ 2. Attendance (View Saved Attendance Records)
+// ✅ View Attendance + Search + Daily Count Summary + Delete Old Records
 window.loadAttendance = async function () {
     closeMenu();
-    mainContent.innerHTML = `<h2>Loading Attendance...</h2>`;
+    mainContent.innerHTML = `
+        <h2>Attendance Records</h2>
 
-    const snap = await getDocs(collection(db, "attendance"));
+        <input type="text" id="attSearch" placeholder="Search by Name or Register No" class="inp" onkeyup="filterAttendance()">
+
+        <button onclick="showDeletePanel()" style="padding:8px; margin-top:10px; background:red; color:white; border:none; cursor:pointer;">
+            Delete Old Records
+        </button>
+
+        <div id="deleteBox" style="display:none; margin-top:15px; padding:10px; border:1px solid #aaa;">
+            <h3>Delete Records by Date Range</h3>
+            <label>From Date:</label><br>
+            <input type="date" id="startDate" class="inp"><br><br>
+
+            <label>To Date:</label><br>
+            <input type="date" id="endDate" class="inp"><br><br>
+
+            <button onclick="deleteRecordsByDate()" style="padding:8px; background:black; color:white; border:none;">
+                Delete Now
+            </button>
+        </div>
+
+        <div id="summaryBox"><h3>Loading summary...</h3></div>
+        <div id="attTable">Loading...</div>
+    `;
+
+    const snap = await getDocs(query(collection(db, "attendance"), orderBy("date", "desc")));
 
     if (snap.empty) {
-        mainContent.innerHTML = `<h2>Attendance</h2><p>No attendance records found.</p>`;
+        document.getElementById("attTable").innerHTML = "<p>No attendance records found.</p>";
+        document.getElementById("summaryBox").innerHTML = "";
         return;
     }
 
-    let html = `<h2>Attendance Records</h2>
-    <table>
+    let html = `
+    <table id="attendanceTable">
         <tr>
             <th>Name</th>
             <th>Reg No</th>
             <th>Date</th>
             <th>Status</th>
         </tr>`;
+
+    let dailyCount = {};
 
     snap.forEach(docu => {
         const d = docu.data();
@@ -219,12 +271,156 @@ window.loadAttendance = async function () {
             <td>${d.date || ""}</td>
             <td>${d.status || ""}</td>
         </tr>`;
+
+        if (!dailyCount[d.date]) {
+            dailyCount[d.date] = { present: 0, absent: 0 };
+        }
+        if (d.status.toLowerCase() === "present") {
+            dailyCount[d.date].present++;
+        } else {
+            dailyCount[d.date].absent++;
+        }
+    });
+
+    html += `</table>`;
+    document.getElementById("attTable").innerHTML = html;
+
+    let summaryHTML = `
+        <h3>Daily Attendance Summary</h3>
+        <table>
+            <tr>
+                <th>Date</th>
+                <th>Present</th>
+                <th>Absent</th>
+            </tr>`;
+
+    Object.keys(dailyCount).forEach(date => {
+        summaryHTML += `
+            <tr>
+                <td>${date}</td>
+                <td>${dailyCount[date].present}</td>
+                <td>${dailyCount[date].absent}</td>
+            </tr>`;
+    });
+
+    summaryHTML += `</table>`;
+    document.getElementById("summaryBox").innerHTML = summaryHTML;
+};
+
+
+// ✅ Search Filter
+window.filterAttendance = function () {
+    const searchValue = document.getElementById("attSearch").value.toLowerCase();
+    const table = document.getElementById("attendanceTable");
+    const rows = table.getElementsByTagName("tr");
+
+    for (let i = 1; i < rows.length; i++) {
+        const name = rows[i].cells[0].textContent.toLowerCase();
+        const reg = rows[i].cells[1].textContent.toLowerCase();
+
+        rows[i].style.display = (name.includes(searchValue) || reg.includes(searchValue)) ? "" : "none";
+    }
+};
+
+
+// ✅ Show delete input box
+window.showDeletePanel = function () {
+    document.getElementById("deleteBox").style.display = "block";
+};
+
+
+// ✅ Delete Records Between Dates
+window.deleteRecordsByDate = async function () {
+    let start = document.getElementById("startDate").value;
+    let end = document.getElementById("endDate").value;
+
+    if (!start || !end) {
+        alert("Select both dates");
+        return;
+    }
+
+    // Convert to format DD-MM-YYYY
+    function convert(d) {
+        let x = new Date(d);
+        let dd = String(x.getDate()).padStart(2, '0');
+        let mm = String(x.getMonth() + 1).padStart(2, '0');
+        let yyyy = x.getFullYear();
+        return `${dd}-${mm}-${yyyy}`;
+    }
+
+    let startDate = convert(start);
+    let endDate = convert(end);
+
+    const snap = await getDocs(collection(db, "attendance"));
+    let deleted = 0;
+
+    for (const docu of snap.docs) {
+        const d = docu.data();
+        if (d.date >= startDate && d.date <= endDate) {
+            await deleteDoc(doc(db, "attendance", docu.id));
+            deleted++;
+        }
+    }
+
+    alert(`✅ Deleted ${deleted} records between ${startDate} and ${endDate}`);
+
+    loadAttendance(); // refresh table
+};
+
+
+/* ===================== WARDEN - ROOM CHANGE REQUESTS ===================== */
+window.loadRoomRequests = async function () {
+    mainContent.innerHTML = `<h2>Room Change Requests</h2><p>Loading...</p>`;
+
+    const snap = await getDocs(collection(db, "room_change"));
+    if (snap.empty) {
+        mainContent.innerHTML = `<h2>Room Change Requests</h2><p>No requests found</p>`;
+        return;
+    }
+
+    let html = `<h2>Room Change Requests</h2><table>
+        <tr><th>Name</th><th>Reg No</th><th>Current</th><th>Requested</th><th>Reason</th><th>Status</th><th>Action</th></tr>`;
+
+    snap.forEach(d => {
+        let x = d.data();
+        html += `
+            <tr>
+                <td>${x.name}</td>
+                <td>${x.regno}</td>
+                <td>${x.currentRoom}</td>
+                <td>${x.newRoom}</td>
+                <td>${x.reason}</td>
+                <td>${x.status}</td>
+                <td>
+                    <button onclick="approveRoom('${d.id}', '${x.uid}', '${x.newRoom}')">Approve</button>
+                    <button onclick="rejectRoom('${d.id}')">Reject</button>
+                </td>
+            </tr>`;
     });
 
     html += `</table>`;
     mainContent.innerHTML = html;
 };
 
+window.approveRoom = async function (docId, uid, newRoom) {
+    const ref = doc(db, "room_change", docId);
+    await updateDoc(ref, { status: "Approved" });
+
+    // update student room number
+    const userRef = doc(db, "users", uid);
+    await updateDoc(userRef, { room: newRoom });
+
+    alert("Room Change Approved ✅");
+    loadRoomRequests();
+};
+
+window.rejectRoom = async function (docId) {
+    const ref = doc(db, "room_change", docId);
+    await updateDoc(ref, { status: "Rejected" });
+
+    alert("Request Rejected ❌");
+    loadRoomRequests();
+};
 
 // ✅ Load Outpass Requests
 window.loadOutpass = async function () {
@@ -232,18 +428,33 @@ window.loadOutpass = async function () {
     const snap = await getDocs(collection(db, "outpass"));
 
     let html = `<h2>Outpass Requests</h2><table>
-    <tr><th>Name</th><th>Reason</th><th>Date</th><th>Action</th></tr>`;
+    <tr>
+        <th>Name</th>
+        <th>Reason</th>
+        <th>Date</th>
+        <th>Status</th>
+        <th>Action</th>
+    </tr>`;
 
     snap.forEach(d => {
         let info = d.data();
+
+        let statusText = "⏳ Pending";
+        if (info.status === "Approved") statusText = "✅ Approved";
+        if (info.status === "Rejected") statusText = "❌ Rejected";
+
         html += `
         <tr>
             <td>${info.name}</td>
             <td>${info.reason}</td>
             <td>${info.date}</td>
+            <td>${statusText}</td>
             <td>
                 <button class="btn approve" onclick="approveOutpass('${d.id}')">Approve</button>
                 <button class="btn reject" onclick="rejectOutpass('${d.id}')">Reject</button>
+                
+                <!-- ✅ DELETE BUTTON -->
+                <button class="btn delete" onclick="deleteOutpass('${d.id}')">🗑 Delete</button>
             </td>
         </tr>`;
     });
@@ -252,103 +463,379 @@ window.loadOutpass = async function () {
     mainContent.innerHTML = html;
 };
 
+
+// ✅ Approve Outpass
 window.approveOutpass = async function (id) {
     await updateDoc(doc(db, "outpass", id), { status: "Approved" });
     alert("✅ Outpass Approved");
     loadOutpass();
 };
 
+
+// ✅ Reject Outpass
 window.rejectOutpass = async function (id) {
-    await deleteDoc(doc(db, "outpass", id));
+    await updateDoc(doc(db, "outpass", id), { status: "Rejected" });
     alert("❌ Outpass Rejected");
     loadOutpass();
 };
+
+
+// ✅ DELETE Outpass
+window.deleteOutpass = async function (id) {
+    if (!confirm("Are you sure you want to delete this outpass request?")) return;
+
+    await deleteDoc(doc(db, "outpass", id));
+    alert("🗑 Outpass Request Deleted");
+    loadOutpass();
+};
+
+
+
 // ---------- additional imports (allowed in same module) ----------
 import { addDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
-// ---------- 4. Leave Requests (Approve/Reject) ----------
+// ---------- 4. Leave Requests (Approve/Reject + Status + Delete Old Records) ----------
 window.loadLeave = async function () {
   closeMenu();
   const snap = await getDocs(collection(db, "leave_requests"));
-  let html = `<h2>Leave Requests</h2><table>
-    <tr><th>Name</th><th>RegNo</th><th>From</th><th>To</th><th>Reason</th><th>Action</th></tr>`;
+
+  let html = `
+    <h2>Leave Requests</h2>
+
+    <button onclick="showDeleteLeavePanel()" style="padding:8px; margin-bottom:10px; background:red; color:white; border:none; cursor:pointer;">
+      Delete Old Leave Records
+    </button>
+
+    <div id="deleteLeaveBox" style="display:none; margin-bottom:15px; padding:10px; border:1px solid #aaa;">
+      <h3>Delete Leave Records by Date</h3>
+      <label>From Date:</label><br>
+      <input type="date" id="leaveStartDate" class="inp"><br><br>
+
+      <label>To Date:</label><br>
+      <input type="date" id="leaveEndDate" class="inp"><br><br>
+
+      <button onclick="deleteLeaveRecords()" style="padding:8px; background:black; color:white; border:none; cursor:pointer;">
+        Delete Now
+      </button>
+    </div>
+
+    <table>
+      <tr>
+        <th>Name</th>
+        <th>RegNo</th>
+        <th>From</th>
+        <th>To</th>
+        <th>Reason</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>`;
+
   snap.forEach(d => {
     const it = d.data();
-    html += `<tr>
-      <td>${escapeHtml(it.name || "")}</td>
-      <td>${escapeHtml(it.regno || "")}</td>
-      <td>${escapeHtml(it.from || "")}</td>
-      <td>${escapeHtml(it.to || "")}</td>
-      <td>${escapeHtml(it.reason || "")}</td>
-      <td>
-        <button class="btn approve" onclick="approveLeave('${d.id}')">Approve</button>
-        <button class="btn reject" onclick="rejectLeave('${d.id}')">Reject</button>
-      </td>
-    </tr>`;
+
+    let status = "Pending ⏳";
+    if (it.status === "Approved") status = "✅ Approved";
+    if (it.status === "Rejected") status = "❌ Rejected";
+
+    html += `
+      <tr>
+        <td>${escapeHtml(it.name || "")}</td>
+        <td>${escapeHtml(it.regno || "")}</td>
+        <td>${escapeHtml(it.from || "")}</td>
+        <td>${escapeHtml(it.to || "")}</td>
+        <td>${escapeHtml(it.reason || "")}</td>
+        <td>${status}</td>
+        <td>
+          <button class="btn approve" onclick="approveLeave('${d.id}')">Approve</button>
+          <button class="btn reject" onclick="rejectLeave('${d.id}')">Reject</button>
+        </td>
+      </tr>`;
   });
+
   html += `</table>`;
   mainContent.innerHTML = html;
 };
 
+
+// ✅ Approve leave
 window.approveLeave = async function (id) {
-  await updateDoc(doc(db, "leave_requests", id), { status: "Approved", processedAt: new Date().toISOString() });
+  await updateDoc(doc(db, "leave_requests", id), {
+    status: "Approved",
+    processedAt: new Date().toISOString()
+  });
   alert("✅ Leave Approved");
   loadLeave();
 };
 
+
+// ✅ Reject leave
 window.rejectLeave = async function (id) {
-  await updateDoc(doc(db, "leave_requests", id), { status: "Rejected", processedAt: new Date().toISOString() });
+  await updateDoc(doc(db, "leave_requests", id), {
+    status: "Rejected",
+    processedAt: new Date().toISOString()
+  });
   alert("❌ Leave Rejected");
   loadLeave();
+};
+
+
+// ✅ Show delete panel
+window.showDeleteLeavePanel = function () {
+  document.getElementById("deleteLeaveBox").style.display = "block";
+};
+
+
+// ✅ Delete leave requests by date range
+window.deleteLeaveRecords = async function () {
+  let start = document.getElementById("leaveStartDate").value;
+  let end = document.getElementById("leaveEndDate").value;
+
+  if (!start || !end) {
+    alert("⚠ Please select both dates");
+    return;
+  }
+
+  // Convert to DD-MM-YYYY (same as stored)
+  function convert(d) {
+    let x = new Date(d);
+    let dd = String(x.getDate()).padStart(2, '0');
+    let mm = String(x.getMonth() + 1).padStart(2, '0');
+    let yyyy = x.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  }
+
+  let startDate = convert(start);
+  let endDate = convert(end);
+
+  const snap = await getDocs(collection(db, "leave_requests"));
+  let deleted = 0;
+
+  for (const docu of snap.docs) {
+    const d = docu.data();
+    if (d.from >= startDate && d.from <= endDate) {
+      await deleteDoc(doc(db, "leave_requests", docu.id));
+      deleted++;
+    }
+  }
+
+  alert(`✅ Deleted ${deleted} leave records between ${startDate} and ${endDate}`);
+  loadLeave();
+};
+window.loadFeedback = async function () {
+  closeMenu();
+  const snap = await getDocs(collection(db, "feedback"));
+
+  let html = `<h2>Feedback</h2>`;
+
+  // ✅ Collect dates
+  let fbDates = new Set();
+  snap.forEach(d => {
+    const it = d.data();
+    if (it.createdAt) fbDates.add(it.createdAt);
+  });
+
+  // ✅ Date dropdown
+  if (fbDates.size > 0) {
+    html += `
+      <label>Delete Feedback on:</label>
+      <select id="deleteFBDate">
+        ${[...fbDates].map(dt => `<option value="${dt}">${dt}</option>`).join("")}
+      </select>
+      <button class="btn delete" onclick="deleteFeedbackByDropdown()">🗑 Delete</button>
+    `;
+  }
+
+  html += `<table>
+    <tr><th>Name</th><th>RegNo</th><th>Rating</th><th>Message</th><th>Date</th><th>Action</th></tr>`;
+
+  snap.forEach(d => {
+    const it = d.data();
+    const stars = "★".repeat(it.rating || 0) + "☆".repeat(5 - (it.rating || 0));
+
+    html += `<tr>
+      <td>${escapeHtml(it.name || '')}</td>
+      <td>${escapeHtml(it.regno || '')}</td>
+      <td style="font-size:22px;color:gold">${stars}</td>
+      <td style="text-align:left">${escapeHtml(it.message || '')}</td>
+      <td>${it.createdAt || "-"}</td>
+      <td><button class="btn-icon" onclick="deleteFeedback('${d.id}')">🗑</button></td>
+    </tr>`;
+  });
+
+  html += `</table>`;
+  mainContent.innerHTML = html;
+};
+
+window.deleteFeedbackByDropdown = async function () {
+  const date = document.getElementById("deleteFBDate").value;
+
+  const q = query(collection(db, "feedback"), where("createdAt", "==", date));
+  const snap = await getDocs(q);
+
+  for (let d of snap.docs) {
+    await deleteDoc(doc(db, "feedback", d.id));
+  }
+
+  alert("✅ Deleted feedback from " + date);
+  loadFeedback();
+};
+
+window.loadFeedback = async function () {
+  closeMenu();
+  const snap = await getDocs(collection(db, "feedback"));
+
+  let html = `<h2>Feedback</h2>`;
+
+  // ✅ Collect dates
+  let fbDates = new Set();
+  snap.forEach(d => {
+    const it = d.data();
+    if (it.createdAt) fbDates.add(it.createdAt);
+  });
+
+  // ✅ Date dropdown
+  if (fbDates.size > 0) {
+    html += `
+      <label>Delete Feedback on:</label>
+      <select id="deleteFBDate">
+        ${[...fbDates].map(dt => `<option value="${dt}">${dt}</option>`).join("")}
+      </select>
+      <button class="btn delete" onclick="deleteFeedbackByDropdown()">🗑 Delete</button>
+    `;
+  }
+
+  html += `<table>
+    <tr><th>Name</th><th>RegNo</th><th>Rating</th><th>Message</th><th>Date</th><th>Action</th></tr>`;
+
+  snap.forEach(d => {
+    const it = d.data();
+    const stars = "★".repeat(it.rating || 0) + "☆".repeat(5 - (it.rating || 0));
+
+    html += `<tr>
+      <td>${escapeHtml(it.name || '')}</td>
+      <td>${escapeHtml(it.regno || '')}</td>
+      <td style="font-size:22px;color:gold">${stars}</td>
+      <td style="text-align:left">${escapeHtml(it.message || '')}</td>
+      <td>${it.createdAt || "-"}</td>
+      <td><button class="btn-icon" onclick="deleteFeedback('${d.id}')">🗑</button></td>
+    </tr>`;
+  });
+
+  html += `</table>`;
+  mainContent.innerHTML = html;
+};
+
+window.deleteFeedbackByDropdown = async function () {
+  const date = document.getElementById("deleteFBDate").value;
+
+  const q = query(collection(db, "feedback"), where("createdAt", "==", date));
+  const snap = await getDocs(q);
+
+  for (let d of snap.docs) {
+    await deleteDoc(doc(db, "feedback", d.id));
+  }
+
+  alert("✅ Deleted feedback from " + date);
+  loadFeedback();
 };
 
 // ---------- 5. Complaints ----------
 window.loadComplaints = async function () {
   closeMenu();
   const snap = await getDocs(collection(db, "complaints"));
-  let html = `<h2>Complaints</h2><table>
-    <tr><th>Name</th><th>RegNo</th><th>Message</th><th>Status</th><th>Action</th></tr>`;
+  
+  let html = `<h2>Complaints</h2>`;
+
+  // ✅ Collect dates (ignore missing date)
+  let dates = new Set();
   snap.forEach(d => {
     const it = d.data();
-    html += `<tr>
-      <td>${escapeHtml(it.name||'')}</td>
-      <td>${escapeHtml(it.regno||'')}</td>
-      <td style="text-align:left">${escapeHtml(it.message||'')}</td>
-      <td>${escapeHtml(it.status||'Open')}</td>
-      <td><button class="btn" onclick="resolveComplaint('${d.id}')">Mark Resolved</button></td>
+    if (it.createdAt) dates.add(it.createdAt);
+  });
+
+  // ✅ Dropdown only if date exists
+  if (dates.size > 0) {
+    html += `
+      <label>Delete Complaints by Date:</label>
+      <select id="deleteCompDate">
+        ${[...dates].map(dt => `<option value="${dt}">${dt}</option>`).join("")}
+      </select>
+      <button class="btn delete" onclick="deleteComplaintsByDropdown()">🗑 Delete</button>
+      <br><br>
+    `;
+  }
+
+  html += `<table>
+    <tr>
+      <th>Name</th>
+      <th>RegNo</th>
+      <th>Message</th>
+      <th>Date</th>
+      <th>Status</th>
+      <th>Action</th>
+    </tr>`;
+  
+  snap.forEach(d => {
+    const it = d.data();
+    const dateShow = it.createdAt ? it.createdAt : "Unknown Date";
+
+    let status = it.status || "Pending";
+    if (status === "Pending") status = "⏳ Pending";
+    if (status === "Resolved") status = "✅ Resolved";
+    if (status === "Closed") status = "❌ Closed";
+
+    html += `
+    <tr>
+      <td>${escapeHtml(it.name || '')}</td>
+      <td>${escapeHtml(it.regno || '')}</td>
+      <td style="text-align:left">${escapeHtml(it.message || '')}</td>
+      <td>${dateShow}</td>
+      <td>${status}</td>
+      <td>
+          <button onclick="resolveComplaint('${d.id}')">✅</button>
+          <button onclick="closeComplaint('${d.id}')">❌</button>
+          <button onclick="deleteComplaint('${d.id}')">🗑</button>
+      </td>
     </tr>`;
   });
+
   html += `</table>`;
   mainContent.innerHTML = html;
 };
 
-window.resolveComplaint = async function (id) {
-  if (!confirm("Mark this complaint resolved?")) return;
-  await updateDoc(doc(db, "complaints", id), { status: "Resolved", resolvedAt: new Date().toISOString() });
-  alert("Complaint marked resolved");
+// ✅ Delete 1 complaint
+window.deleteComplaint = async function (id) {
+  await deleteDoc(doc(db, "complaints", id));
+  alert("🗑 Complaint Deleted");
   loadComplaints();
 };
 
-// ---------- 6. Feedback ----------
-window.loadFeedback = async function () {
-  closeMenu();
-  const snap = await getDocs(collection(db, "feedback"));
-  let html = `<h2>Feedback</h2>`;
-  if (snap.empty) html += `<p>No feedback yet.</p>`;
-  else {
-    html += `<div>`;
-    snap.forEach(d => {
-      const it = d.data();
-      html += `<div style="background:#fff;padding:10px;margin:8px 0;border-radius:6px">
-        <strong>${escapeHtml(it.name||'')}</strong> — Rating: ${escapeHtml(it.rating||'')}
-       
-        <p>${escapeHtml(it.message||'')}</p>
-      </div>`;
-    });
-    html += `</div>`;
+// ✅ Delete complaints by selected date
+window.deleteComplaintsByDropdown = async function () {
+  const date = document.getElementById("deleteCompDate").value;
+  const q = query(collection(db, "complaints"), where("createdAt", "==", date));
+  const snap = await getDocs(q);
+
+  for (let d of snap.docs) {
+    await deleteDoc(doc(db, "complaints", d.id));
   }
-  mainContent.innerHTML = html;
+
+  alert("✅ Deleted all complaints from: " + date);
+  loadComplaints();
 };
+
+// ✅ Mark Resolved
+window.resolveComplaint = async function (id) {
+  await updateDoc(doc(db, "complaints", id), { status: "Resolved" });
+  loadComplaints();
+};
+
+// ✅ Mark Closed
+window.closeComplaint = async function (id) {
+  await updateDoc(doc(db, "complaints", id), { status: "Closed" });
+  loadComplaints();
+};
+
 
 // ---------- 7. Announcements (Post + Delete) ----------
 window.loadAnnouncements = async function () {
